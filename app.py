@@ -34,6 +34,18 @@ Talisman(
 app.secret_key = "dev-sem-auth"
 LIMITE_SINALIZACOES = 10
 
+_db_iniciado = False
+
+def garantir_db():
+    global _db_iniciado
+    if _db_iniciado:
+        return
+    try:
+        init_db()
+        _db_iniciado = True
+    except Exception as e:
+        print(f"[init_db erro] {e}")
+
 def init_db():
     conn = sqlite3.connect("viral.db")
     c = conn.cursor()
@@ -85,17 +97,19 @@ def fetch_link_preview(url):
     except Exception:
         return {"title": None, "description": None, "image": None}
 
-@app.before_request
-def iniciar_db():
-    garantir_db()
+@app.route("/health")
+def health():
+    return "ok", 200
 
 @app.route("/")
 def index():
+    garantir_db()
     get_anon()
     return render_template("feed.html", anon_name=session["anon_name"])
 
 @app.route("/api/posts", methods=["GET"])
 def api_posts():
+    garantir_db()
     anon_id, _ = get_anon()
     conn = db(); c = conn.cursor()
     c.execute("""SELECT p.id, p.content, p.link, p.link_title, p.link_description, p.link_image,
@@ -111,6 +125,7 @@ def api_posts():
 @app.route("/api/posts", methods=["POST"])
 @limiter.limit("10 per minute")
 def api_create():
+    garantir_db()
     anon_id, anon_name = get_anon()
     d = request.get_json()
     content = (d.get("content") or "").strip()
@@ -127,6 +142,7 @@ def api_create():
 @app.route("/api/like/<int:pid>", methods=["POST"])
 @limiter.limit("30 per minute")
 def api_like(pid):
+    garantir_db()
     anon_id, _ = get_anon()
     conn = db(); c = conn.cursor()
     c.execute("SELECT id FROM likes WHERE post_id = ? AND anon_id = ?", (pid, anon_id))
@@ -144,6 +160,7 @@ def api_like(pid):
 @app.route("/api/flag/<int:pid>", methods=["POST"])
 @limiter.limit("5 per minute")
 def api_flag(pid):
+    garantir_db()
     anon_id, _ = get_anon()
     conn = db(); c = conn.cursor()
     c.execute("SELECT id FROM flags WHERE post_id = ? AND anon_id = ?", (pid, anon_id))
@@ -164,6 +181,7 @@ def api_flag(pid):
 
 @app.route("/api/comments/<int:pid>", methods=["GET", "POST"])
 def api_comments(pid):
+    garantir_db()
     anon_id, anon_name = get_anon()
     conn = db(); c = conn.cursor()
     if request.method == "POST":
@@ -228,7 +246,7 @@ def api_blocos():
     return jsonify({"repostadas": bloco1, "curtidas": bloco2, "tempo_real": bloco3, "destaque": bloco4})
 
 
-init_db()
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
