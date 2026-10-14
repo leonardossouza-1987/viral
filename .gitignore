@@ -1,0 +1,9 @@
+.venv/
+venv/
+viral.db
+*.db
+*.pyc
+__pycache__/
+.env
+.DS_Store
+*.log
