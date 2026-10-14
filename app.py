@@ -85,6 +85,10 @@ def fetch_link_preview(url):
     except Exception:
         return {"title": None, "description": None, "image": None}
 
+@app.before_request
+def iniciar_db():
+    garantir_db()
+
 @app.route("/")
 def index():
     get_anon()
