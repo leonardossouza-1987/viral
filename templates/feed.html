@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Viral — A rede do povo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=10">
+</head>
+<body>
+
+<header>
+  <svg class="capi" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="2" width="60" height="60" fill="#fafafa" stroke="#1a1a1a" stroke-width="3" rx="8"/>
+    <path d="M14 40 Q14 26 26 26 L38 26 Q50 26 50 36 Q50 46 40 46 L22 46 Q14 46 14 40 Z" fill="#8b4513" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="44" cy="33" r="2" fill="#1a1a1a"/>
+    <path d="M38 26 L36 20 L42 20 L40 26" fill="#8b4513" stroke="#1a1a1a" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M20 32 L18 44" stroke="#1a1a1a" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M30 32 L30 44" stroke="#1a1a1a" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="56,10 58,16 64,16 59,20 61,26 56,22 51,26 53,20 48,16 54,16" fill="#e63946" stroke="#1a1a1a" stroke-width="1.5"/>
+  </svg>
+  <div><strong>Viral</strong><span class="slogan">A rede do povo</span></div>
+  <span class="me">{{ anon_name }}</span>
+</header>
+
+<div class="composer">
+  <textarea id="content" placeholder="Escreva sua proclamação..."></textarea>
+  <input id="link" placeholder="Cole um link do povo (opcional)">
+  <input id="tags" placeholder="Tags (ex: futebol politica) — opcional">
+  <button id="btn-post" onclick="createPost()">Publicar</button>
+</div>
+
+<div id="blocos"></div>
+
+<footer>Feito <span>coletivamente</span> · Cada link é um tijolo</footer>
+
+<script>
+function iniciais(nome){return (nome||"?").replace("Anônimo #","").slice(0,2).toUpperCase();}
+let assinaturaAnterior = "";
+
+function renderPost(p){
+  let preview = "";
+  if(p.link){
+    let host = ""; try{ host = new URL(p.link).hostname.replace("www.",""); }catch(e){ host = p.link; }
+    const extra = p.total_compartilhado > 1
+      ? `<div class="agregado">🔗 ${p.total_compartilhado} pessoas compartilharam</div>` : "";
+    preview = `<a class="link-preview" href="${p.link}" target="_blank" rel="noopener">
+      ${p.link_image?`<img src="${p.link_image}" alt="" onerror="this.style.display='none'">`:""}
+      <div class="preview-text">
+        <h4>${esc(p.link_title||p.link)}</h4>
+        ${p.link_description?`<p>${esc(p.link_description)}</p>`:""}
+        <span>${esc(host)}</span>
+      </div>
+    </a>${extra}`;
+  }
+  const tagsHtml = p.tags ? `<div class="tags">${p.tags.split(",").map(t=>`<span>#${esc(t)}</span>`).join("")}</div>` : "";
+  return `<div class="post">
+    <div class="post-header">
+      <div class="avatar">${iniciais(p.author)}</div>
+      <span class="author">${p.author}</span>
+      ${p.total_compartilhado>1?`<span class="mais">+${p.total_compartilhado-1}</span>`:""}
+      <small>${new Date(p.created_at).toLocaleString('pt-BR')}</small>
+    </div>
+    ${p.content?`<div class="post-content">${esc(p.content)}</div>`:""}
+    ${preview}
+    ${tagsHtml}
+    <div class="post-actions">
+      <button onclick="toggleLike(${p.id})">${p.liked_by_me?'❤':'♡'} ${p.likes}</button>
+      <button onclick="toggleComments(${p.id})">💬 ${p.comments}</button>
+      <button class="flag ${p.flagged_by_me?'ativo':''}" onclick="flagPost(${p.id})">⚠ ${p.reports}</button>
+    </div>
+    <div class="comments" id="c-${p.id}" style="display:none"></div>
+  </div>`;
+}
+
+function renderBloco(titulo, subtitulo, posts){
+  if(!posts || posts.length===0){
+    return `<section class="bloco">
+      <div class="bloco-header"><h2>${titulo}</h2><span class="bloco-sub">${subtitulo}</span></div>
+      <p class="vazio-bloco">Nada por aqui ainda.</p>
+    </section>`;
+  }
+  return `<section class="bloco">
+    <div class="bloco-header"><h2>${titulo}</h2><span class="bloco-sub">${subtitulo}</span></div>
+    <div class="bloco-lista">${posts.map(renderPost).join("")}</div>
+  </section>`;
+}
+
+async function carregarBlocos(){
+  const r = await fetch("/api/blocos");
+  const d = await r.json();
+  const assinatura = JSON.stringify(d).slice(0, 200);
+  if(assinatura === assinaturaAnterior) return;
+  assinaturaAnterior = assinatura;
+
+  document.getElementById("blocos").innerHTML =
+    renderBloco("🔥 Em chamas", "As mais repostadas agora", d.repostadas) +
+    renderBloco("❤️ Favoritas do povo", "As mais curtidas", d.curtidas) +
+    renderBloco("⚡ Acontecendo agora", "Repostadas nos últimos 30 min", d.tempo_real) +
+    renderBloco("👑 Destaque geral", "Curtidas valem 2, reposts valem 1", d.destaque);
+}
+
+async function createPost(){
+  const btn = document.getElementById("btn-post");
+  const c = document.getElementById("content").value.trim();
+  const l = document.getElementById("link").value.trim();
+  const tg = document.getElementById("tags").value.trim();
+  if(!c && !l) return;
+  btn.disabled = true; btn.textContent = "Publicando...";
+  try{
+    await fetch("/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:c,link:l,tags:tg})});
+    document.getElementById("content").value = "";
+    document.getElementById("link").value = "";
+    document.getElementById("tags").value = "";
+    assinaturaAnterior = ""; await carregarBlocos();
+  } finally { btn.disabled = false; btn.textContent = "Publicar"; }
+}
+
+async function toggleLike(id){ await fetch(`/api/like/${id}`,{method:"POST"}); assinaturaAnterior=""; carregarBlocos(); }
+async function flagPost(id){ await fetch(`/api/flag/${id}`,{method:"POST"}); assinaturaAnterior=""; carregarBlocos(); }
+
+async function toggleComments(id){
+  const el = document.getElementById(`c-${id}`);
+  if(el.style.display==="block"){ el.style.display="none"; return; }
+  el.style.display = "block";
+  const r = await fetch(`/api/comments/${id}`);
+  const cs = await r.json();
+  el.innerHTML = cs.map(c=>`<div class="comment"><strong>${c.author}</strong><br>${esc(c.content)}</div>`).join("")
+    + `<div class="comment-form"><input id="i-${id}" placeholder="Comentar..."><button onclick="sendComment(${id})">Enviar</button></div>`;
+}
+
+async function sendComment(id){
+  const i = document.getElementById(`i-${id}`);
+  const c = i.value.trim(); if(!c) return;
+  await fetch(`/api/comments/${id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:c})});
+  i.value = ""; await toggleComments(id); await toggleComments(id);
+  assinaturaAnterior=""; carregarBlocos();
+}
+
+function esc(t){const d=document.createElement("div");d.textContent=t||"";return d.innerHTML;}
+carregarBlocos();
+setInterval(carregarBlocos, 15000);
+</script>
+</body>
+</html>
